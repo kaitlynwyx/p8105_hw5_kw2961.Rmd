@@ -173,25 +173,20 @@ iris_with_missing =
   mutate(Species = as.character(Species)) %>% 
   janitor::clean_names()
 
-fillin = function(column_name) {
+fillin = function(x) {
   
-  if (is.numeric) {
-    
-    replace_na(column_name, mean(column_name, na.rm = TRUE))
-    
-    
-  } else if (is.character) {
-    
-    replace_na(column_name, "virginica") 
-      
+  if (is.numeric(x)) {
+    x = replace_na(x, round(mean(x, na.rm = TRUE), digits = 1))
+  } 
+  
+  else if (is.character(x)) {
+   x = replace_na(x, "virginica") 
   }
   
-  return(column_name)
+  return(x)
 }
 
+iris_no_missing = map_df(iris_with_missing, ~fillin(.x))
 
-
-iris_with_missing$sepal_length[is.na(iris_with_missing$sepal_length)] = mean(iris_with_missing$sepal_length, na.rm = TRUE)
-iris_with_missing
 ```
 
