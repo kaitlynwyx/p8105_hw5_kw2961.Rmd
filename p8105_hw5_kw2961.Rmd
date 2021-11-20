@@ -1,0 +1,197 @@
+---
+title: "p8105_hw5_kw2961"
+author: "Kaitlyn Wang"
+date: "11/16/2021"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(dplyr)
+```
+
+# Problem 1
+```{r}
+homicide = 
+  read_csv("./data/homicide-data.csv", na = c("", "Unknown")) %>% 
+  mutate(city_state = str_c(city, state),
+         resolution = case_when(
+           disposition == "Closed by arrest"             ~ "solved",
+           disposition == "Closed without arrest"        ~ "unsolved", 
+           disposition == "Open/No arrest"               ~ "unsolved"
+         )) %>% 
+  relocate(city_state) %>% 
+  filter(city_state != "TulsaAL" )
+```
+
+```{r}
+baltimore_df = 
+  homicide %>% 
+  filter(city_state == "BaltimoreMD")
+
+baltimore_summary = 
+  baltimore_df %>% 
+    summarise(
+      unsolved = sum(resolution == "unsolved"),
+      n = n()
+    )
+
+baltimore_test = 
+  prop.test(
+    x = baltimore_summary %>% pull(unsolved), 
+    n = baltimore_summary %>% pull(n))
+
+baltimore_test %>% 
+  broom::tidy()
+```
+
+```{r}
+prop_test_function = function(city_df) {
+  
+  city_summary = 
+    city_df %>% 
+      summarise(
+        unsolved = sum(resolution == "unsolved"),
+        n = n()
+      )
+
+  city_test = 
+    prop.test(
+      x = city_summary %>% pull(unsolved), 
+      n = city_summary %>% pull(n))
+  
+  return(city_test)
+  
+}
+  
+
+prop_test_function(baltimore_df)
+
+homicide %>% 
+  filter(city_state == "AlbuquerqueNM") %>% 
+  prop_test_function()
+```
+
+```{r}
+results_df = 
+  homicide %>% 
+    nest(data = uid:resolution) %>% 
+    mutate(
+      test_results = map(data, prop_test_function),
+      tidy_results = map(test_results, broom::tidy)
+    ) %>% 
+  select(city_state, tidy_results) %>% 
+  unnest(tidy_results) %>% 
+  select(city_state, estimate, starts_with("conf"))
+```
+
+```{r}
+results_df %>% 
+  mutate(city_state = fct_reorder(city_state, estimate)) %>% 
+  ggplot(aes(x = city_state, y = estimate)) + 
+  geom_point() +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high)) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+```
+
+```{r}
+homicide %>% 
+  group_by(city_state) %>% 
+  summarize(
+    unsolved = sum(resolution == "unsolved"),
+    total = n()
+  ) %>% 
+  mutate(
+    test_results = map2(unsolved, total, prop.test),
+    tidy_results = map(test_results, broom::tidy)
+  ) %>% 
+  select(city_state, tidy_results) %>% 
+  unnest(tidy_results) %>% 
+  select(city_state, estimate, starts_with("conf"))
+```
+
+# Problem 2
+
+```{r message = FALSE}
+file_list = 
+  tibble(
+    files = list.files("./data2"))
+
+read = function(file_name) {
+  
+  file = read_csv(str_c("./data2/", file_name))
+  
+  return(file)
+}
+
+file_df = 
+  file_list %>% 
+  mutate(
+    output = map(files, read)
+  ) %>% 
+  unnest(output) %>% 
+  mutate(
+    files = str_replace(files, "con_", "Control_"),
+    files = str_replace(files, "exp_", "Experimental_"),
+    files = substr(files, 1, nchar(files) - 4)) %>% 
+  rename(subjects = files)
+```
+
+
+```{r}
+study_plot = 
+  file_df %>% 
+    pivot_longer(
+      week_1:week_8,
+      names_to = "week",
+      values_to = "values"
+    ) %>% 
+  mutate(
+    group = ifelse(str_detect(subjects, "Control_"), "control", "experimental"),
+    week = substring(week, 6)
+  )
+
+ggplot(study_plot, aes(x = week, y = values, group = subjects, color = group)) +
+  geom_path() +
+  labs(title = "Control vs. Experimental",
+       x = "Week",
+       y = "Values") + 
+  viridis::scale_color_viridis(
+    discrete = TRUE)
+```
+
+It is shown in the plot that the experimental group have a trend of increasing values throughout the study period while that for the control group is more constant. 
+
+# Problem 3
+
+```{r}
+set.seed(10)
+
+iris_with_missing = 
+  iris %>% 
+  map_df(~replace(.x, sample(1:150, 20), NA)) %>%
+  mutate(Species = as.character(Species)) %>% 
+  janitor::clean_names()
+
+fillin = function(column_name) {
+  
+  if (is.numeric) {
+    
+    replace_na(column_name, mean(column_name, na.rm = TRUE))
+    
+    
+  } else if (is.character) {
+    
+    replace_na(column_name, "virginica") 
+      
+  }
+  
+  return(column_name)
+}
+
+
+
+iris_with_missing$sepal_length[is.na(iris_with_missing$sepal_length)] = mean(iris_with_missing$sepal_length, na.rm = TRUE)
+iris_with_missing
+```
+
